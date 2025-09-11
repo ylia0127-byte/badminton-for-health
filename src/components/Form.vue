@@ -35,7 +35,7 @@
           </div>
         </div>
 
-        <!-- Submit Button -->
+        <!-- Login Button -->
         <button class="btn btn-primary w-100" type="submit">Log In</button>
       </form>
     </div>
