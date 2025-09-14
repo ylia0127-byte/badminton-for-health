@@ -13,9 +13,6 @@
           <router-link to="/about" class="nav-link" active-class="active">About</router-link>
         </li>
         <li class="nav-item">
-          <router-link to="/login" class="nav-link" active-class="active">Login</router-link>
-        </li>
-        <li class="nav-item">
           <router-link to="/Firelogin" class="nav-link" active-class="active"
             >Firebase Login</router-link
           >
@@ -26,7 +23,7 @@
           >
         </li>
         <li class="nav-item">
-          <router-link to="/Rating" class="Rating" active-class="active">Rating</router-link>
+          <router-link to="/Rating" class="nav-link" active-class="active">Rating</router-link>
         </li>
       </ul>
     </header>

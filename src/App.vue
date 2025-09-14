@@ -1,13 +1,17 @@
 <script setup>
-import JSON from './components/JSON.vue'
-import JSONSolution from './components/JSONSolution.vue'
-import Form from './components/Form.vue'
+import BHeader from './components/BHeader.vue'
 </script>
 
 <template>
-  <!-- <JSON /> -->
-  <!-- <JSONSolution /> -->
-  <Form />
+  <header>
+    <BHeader />
+  </header>
+
+  <main>
+    <!--LibraryRegistrationForm / -->
+    <!-- <JSONLab /> -->
+    <router-view></router-view>
+  </main>
 </template>
 
 <style scoped></style>
