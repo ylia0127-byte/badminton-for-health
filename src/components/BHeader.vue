@@ -25,6 +25,9 @@
         <li class="nav-item">
           <router-link to="/Rating" class="nav-link" active-class="active">Rating</router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/profile" class="nav-link" active-class="active">Profile</router-link>
+        </li>
       </ul>
     </header>
   </div>

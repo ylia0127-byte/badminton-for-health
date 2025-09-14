@@ -55,24 +55,38 @@
 
 <script setup>
 import { ref } from 'vue'
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
+import { auth, db } from '@/firebase/config'
+import { getFirestore, doc, getDoc } from 'firebase/firestore'
 import { useRouter } from 'vue-router'
 
 const email = ref('')
 const password = ref('')
 const router = useRouter()
-const auth = getAuth()
 
-const signin = () => {
-  signInWithEmailAndPassword(getAuth(), email.value, password.value)
-    .then((data) => {
-      console.log('Firebase Register Successful!')
-      router.push('/')
-      console.log(auth.currentUser) // To check the current User signed in
-    })
-    .catch((error) => {
-      console.log(error.code)
-    })
+const signin = async () => {
+  try {
+    // 1) sign in
+    const cred = await signInWithEmailAndPassword(auth, email.value, password.value)
+    console.log('Firebase Login Successful!')
+
+    // 2) Read roles from Firestore（users/{uid}.role）
+    const snap = await getDoc(doc(db, 'users', cred.user.uid))
+    const role = snap.exists() ? snap.data().role || 'user' : 'user'
+    console.log('role =', role)
+
+    // 3) Jump by role
+    if (role === 'admin') {
+      router.push('/admin') // Make sure there is/admin in your router
+    } else {
+      router.push('/') // Ordinary users return to the homepage or your dashboard
+    }
+
+    // Debugging: Current user
+    console.log(auth.currentUser)
+  } catch (error) {
+    console.log(error.code)
+  }
 }
 </script>
 
