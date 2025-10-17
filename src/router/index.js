@@ -6,6 +6,7 @@ import FirebaseSigninView from '@/views/FirebaseSigninView.vue'
 import FirebaseRegisterView from '@/views/FirebaseRegisterView.vue'
 import RatingView from '@/views/RatingView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import AppointmentView from '@/views/AppointmentView.vue'
 
 // Firebase Auth + Firestore for role checks
 import { onAuthStateChanged } from 'firebase/auth'
@@ -41,6 +42,15 @@ const routes = [
   // Optional: If you have an administrator page, untangle the comments below and ensure that there is a corresponding AdminView-vue
   // { path: '/admin', name: 'Admin', component: () => import('@/views/AdminView.vue'),
   //   meta: { requiresAuth: true, roles: ['admin'] } },
+
+  {
+    path: '/appointment',
+    name: 'Appointment',
+    component: AppointmentView,
+    meta: { requiresAuth: true },
+  },
+
+  // 404
 
   { path: '/:pathMatch(.*)*', redirect: '/' }, // fallback
   { path: '/profile', name: 'profile', component: ProfileView, meta: { requiresAuth: true } },
