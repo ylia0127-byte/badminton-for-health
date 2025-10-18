@@ -2,7 +2,7 @@
   <section class="container py-4" aria-labelledby="title">
     <h1 id="title" class="h4 mb-3">场地预约 · 周视图（4 时段）</h1>
 
-    <!-- 控件：场地 + 周切换 -->
+    <!-- 场地 + 周切换 -->
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
       <label class="form-label m-0">场地</label>
       <select v-model="selectedCourt" class="form-select" style="max-width: 220px">
@@ -30,21 +30,16 @@
       <span><span class="legend legend-selected"></span> 当前选择</span>
     </div>
 
-    <!-- 4×7 网格（行=时段，列=星期） -->
+    <!-- 4×7 网格 -->
     <div class="scheduler" role="grid" aria-label="四时段周视图">
-      <!-- 左上角空白 -->
       <div class="grid-head"></div>
-      <!-- 星期标题 -->
       <div v-for="d in 7" :key="'h' + d" class="grid-head day">
         {{ weekdayLabel(d - 1) }}<br />
         <span class="date">{{ dayISO(d - 1) }}</span>
       </div>
 
-      <!-- 行：每个时段 -->
       <template v-for="(slot, si) in SLOT_DEFS" :key="'row' + si">
         <div class="time-cell">{{ slot.label }}</div>
-
-        <!-- 列：7 天 -->
         <template v-for="d in 7" :key="'cell-' + si + '-' + d">
           <button
             class="slot"
@@ -55,10 +50,9 @@
           />
         </template>
       </template>
-      <!-- 悬浮取消按钮：只有选中“我的预约”时可点 -->
     </div>
 
-    <!-- 预约确认条 -->
+    <!-- 预约确认 -->
     <div v-if="pendingCreate" class="confirm card border-0 shadow-sm mt-3">
       <div class="card-body d-flex flex-wrap align-items-center gap-3">
         <div>
@@ -85,7 +79,7 @@
       </div>
     </div>
 
-    <!-- 取消确认条（仅我的预约） -->
+    <!-- 取消确认（仅我的预约） -->
     <div v-if="pendingCancel" class="confirm card border-0 shadow-sm mt-3">
       <div class="card-body d-flex flex-wrap align-items-center gap-3">
         <div>
@@ -119,10 +113,21 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import axios from 'axios'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 
-/** 1) 固定时段定义：四个区块 */
+/** 三个 HTTP 触发器 URL（已替换为你的实际地址） */
+const FUNCTION_URL_LIST = 'https://listbookings-edhvttfqwq-uc.a.run.app'
+const FUNCTION_URL_CREATE = 'https://createbooking-edhvttfqwq-uc.a.run.app'
+const FUNCTION_URL_DELETE = 'https://deletebooking-edhvttfqwq-uc.a.run.app'
+
+/** Axios 实例 + 错误提取 */
+const http = axios.create({ timeout: 10000 })
+function pickError(err) {
+  return err?.response?.data?.error || err?.response?.statusText || err?.message || 'Network Error'
+}
+
+/** 固定时段定义：四个区块 */
 const SLOT_DEFS = [
   { label: '08:00–10:00', startH: 8, startM: 0, endH: 10, endM: 0 },
   { label: '10:00–12:00', startH: 10, startM: 0, endH: 12, endM: 0 },
@@ -130,7 +135,7 @@ const SLOT_DEFS = [
   { label: '15:00–17:00', startH: 15, startM: 0, endH: 17, endM: 0 },
 ]
 
-/** 2) 场地与周时间 */
+/** 场地与周时间 */
 const courts = [
   { id: 'court-a', name: 'A 号场地' },
   { id: 'court-b', name: 'B 号场地' },
@@ -141,28 +146,32 @@ const selectedCourt = ref(courts[0].id)
 
 function startOfWeek(dt) {
   const d = new Date(dt)
-  const w = (d.getDay() + 6) % 7
+  const w = d.getDay() // 以周一为一周开始
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() - w)
   return d
 }
+function ymdLocal(date) {
+  const d = new Date(date)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}` // 本地时区的 yyyy-mm-dd
+}
 const weekStart = ref(startOfWeek(new Date()))
+
 function addDays(d, n) {
   const x = new Date(d)
   x.setDate(x.getDate() + n)
   return x
 }
 function weekdayLabel(i) {
-  return ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][i]
-}
+  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][i]
+} // 按你原样保留
 function dayISO(i) {
-  return addDays(weekStart.value, i).toISOString().slice(0, 10)
+  return ymdLocal(addDays(weekStart.value, i))
 }
-const weekRangeLabel = computed(() => {
-  const s = dayISO(0)
-  const e = dayISO(6)
-  return `${s} ~ ${e}`
-})
+const weekRangeLabel = computed(() => `${dayISO(0)} ~ ${dayISO(6)}`)
 function prevWeek() {
   weekStart.value = addDays(weekStart.value, -7)
 }
@@ -173,45 +182,65 @@ function goThisWeek() {
   weekStart.value = startOfWeek(new Date())
 }
 
-/** 3) 登录信息（用于识别“我的预约”与删除权限） */
+/** 登录用户（用于“我的预约”与鉴权） */
 const uid = ref(null)
+const auth = getAuth()
 onMounted(() => {
-  onAuthStateChanged(getAuth(), (u) => {
+  onAuthStateChanged(auth, async (u) => {
     uid.value = u?.uid || null
+    await fetchWeek() // 用户切换后刷新
   })
 })
 
-/** 4) 已占用数据（来自云函数 listBookings） */
+/** 获取带 ID Token 的 headers；未登录直接抛错（避免莫名其妙的 Network Error） */
+async function authHeadersRequired() {
+  const user = auth.currentUser
+  if (!user) throw new Error('请先登录再进行预约或查看数据')
+  const token = await user.getIdToken()
+  return { Authorization: `Bearer ${token}` }
+}
+
+/** 已占用数据 */
 const busy = ref([]) // [{id,courtId,day,slotIndex,start,end,userId}]
 async function fetchWeek() {
-  const fn = httpsCallable(getFunctions(), 'listBookings')
-  const res = await fn({
-    courtId: selectedCourt.value,
-    weekStartISO: addDays(weekStart.value, 0).toISOString(),
-    weekEndISO: addDays(weekStart.value, 7).toISOString(),
-  })
-  busy.value = (res?.data?.rows || []).map((r) => ({
-    ...r,
-    start: r.start?.toDate ? r.start.toDate().toISOString() : r.start,
-    end: r.end?.toDate ? r.end.toDate().toISOString() : r.end,
-  }))
+  try {
+    const headers = await authHeadersRequired()
+    const weekStartMS = weekStart.value.getTime()
+    const weekEndMS = addDays(weekStart.value, 7).getTime()
+    const res = await http.post(
+      FUNCTION_URL_LIST,
+      {
+        courtId: selectedCourt.value,
+        weekStartMS,
+        weekEndMS, // ← 用毫秒值
+      },
+      { headers },
+    )
+    busy.value = res?.data?.rows || []
+    status.value = ''
+  } catch (e) {
+    console.error('listBookings error:', e)
+    status.value = pickError(e)
+    statusClass.value = 'text-danger'
+    busy.value = []
+  }
 }
 watch([weekStart, selectedCourt], fetchWeek, { immediate: true })
 
-/** 5) 网格状态与交互 */
+/** 网格状态与交互 */
 const now = ref(new Date())
 setInterval(() => (now.value = new Date()), 60 * 1000)
 
 function slotStartDate(dIndex, sdef) {
   const base = addDays(weekStart.value, dIndex)
   const dt = new Date(base)
-  dt.setHours(sdef.startH, sdef.startM, 0, 0)
+  dt.setHours(sdef.startH, sdef.startM ?? 0, 0, 0)
   return dt
 }
 function slotEndDate(dIndex, sdef) {
   const base = addDays(weekStart.value, dIndex)
   const dt = new Date(base)
-  dt.setHours(sdef.endH, sdef.endM, 0, 0)
+  dt.setHours(sdef.endH, sdef.endM ?? 0, 0, 0)
   return dt
 }
 function findBooking(dIndex, sIndex) {
@@ -226,8 +255,7 @@ function findBooking(dIndex, sIndex) {
   )
 }
 function isPast(dIndex, sIndex) {
-  const s = slotStartDate(dIndex, SLOT_DEFS[sIndex])
-  return s < now.value
+  return slotStartDate(dIndex, SLOT_DEFS[sIndex]) < now.value
 }
 function isMine(dIndex, sIndex) {
   const b = findBooking(dIndex, sIndex)
@@ -249,13 +277,11 @@ const statusClass = ref('text-muted')
 
 function slotClass(dIndex, sIndex) {
   const selectedCreate =
-    pendingCreate &&
-    pendingCreate.value &&
+    !!pendingCreate.value &&
     pendingCreate.value.start?.toISOString?.().slice(0, 16) ===
       slotStartDate(dIndex, SLOT_DEFS[sIndex]).toISOString().slice(0, 16)
   const selectedCancel =
-    pendingCancel &&
-    pendingCancel.value &&
+    !!pendingCancel.value &&
     pendingCancel.value.start?.toISOString?.().slice(0, 16) ===
       slotStartDate(dIndex, SLOT_DEFS[sIndex]).toISOString().slice(0, 16)
 
@@ -264,11 +290,10 @@ function slotClass(dIndex, sIndex) {
     mine: isMine(dIndex, sIndex),
     busy: isBusyOther(dIndex, sIndex),
     past: isPast(dIndex, sIndex),
-    selected: !!(selectedCreate || selectedCancel),
+    selected: selectedCreate || selectedCancel,
   }
 }
 function isSlotInteractive(dIndex, sIndex) {
-  // 可交互：空闲未来时段（约）；我的预约（可取消）
   return isFree(dIndex, sIndex) || isMine(dIndex, sIndex)
 }
 function ariaLabel(dIndex, sIndex) {
@@ -288,7 +313,6 @@ function handleClick(dIndex, sIndex) {
   const end = slotEndDate(dIndex, sdef)
 
   if (isMine(dIndex, sIndex)) {
-    const booking = findBooking(dIndex, sIndex)
     const bookingId = `${selectedCourt.value}_${day}_${sIndex}` // 确定性 ID
     pendingCancel.value = { bookingId, courtId: selectedCourt.value, start, end }
     pendingCreate.value = null
@@ -300,7 +324,7 @@ function handleClick(dIndex, sIndex) {
   }
 }
 
-/** 6) 提交/取消 */
+/** 提交/取消 */
 function formatDT(d) {
   return new Date(d).toISOString().slice(0, 16).replace('T', ' ')
 }
@@ -309,27 +333,30 @@ async function confirmBooking() {
   if (!pendingCreate.value) return
   loading.value = true
   try {
+    const headers = await authHeadersRequired()
     const { courtId, start, end } = pendingCreate.value
-    const day = start.toISOString().slice(0, 10)
+    const day = ymdLocal(start) // ← 替换原来的 start.toISOString().slice(0,10)
     const sIndex = SLOT_DEFS.findIndex(
       (s) => s.startH === start.getHours() && s.endH === end.getHours(),
     )
-    const fn = httpsCallable(getFunctions(), 'createBooking')
-    await fn({
-      courtId,
-      day,
-      slotIndex: sIndex,
-      startISO: start.toISOString(),
-      endISO: end.toISOString(),
-    })
+    await http.post(
+      FUNCTION_URL_CREATE,
+      {
+        courtId,
+        day,
+        slotIndex: sIndex,
+        startISO: start.toISOString(),
+        endISO: end.toISOString(),
+      },
+      { headers },
+    )
     await fetchWeek()
     status.value = '预约成功'
     statusClass.value = 'text-success'
     pendingCreate.value = null
   } catch (e) {
-    status.value = String(e?.message || e).includes('already-exists')
-      ? '该时段已被占用'
-      : '预约失败'
+    console.error('createBooking error:', e)
+    status.value = pickError(e)
     statusClass.value = 'text-danger'
   } finally {
     loading.value = false
@@ -340,14 +367,15 @@ async function confirmCancel() {
   if (!pendingCancel.value) return
   loading.value = true
   try {
-    const fn = httpsCallable(getFunctions(), 'deleteBooking')
-    await fn({ bookingId: pendingCancel.value.bookingId })
+    const headers = await authHeadersRequired()
+    await http.post(FUNCTION_URL_DELETE, { bookingId: pendingCancel.value.bookingId }, { headers })
     await fetchWeek()
     status.value = '已取消预约'
     statusClass.value = 'text-success'
     pendingCancel.value = null
   } catch (e) {
-    status.value = '取消失败'
+    console.error('deleteBooking error:', e)
+    status.value = pickError(e)
     statusClass.value = 'text-danger'
   } finally {
     loading.value = false
