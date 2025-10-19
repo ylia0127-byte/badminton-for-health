@@ -12,6 +12,9 @@
         <li class="nav-item">
           <router-link to="/Rating" class="nav-link">Rating</router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/ranking" class="nav-link">Ranking</router-link>
+        </li>
         <li class="nav-item" v-if="isAuthed">
           <router-link to="/appointment" class="nav-link">Appointment</router-link>
         </li>
