@@ -1,5 +1,5 @@
 <template>
-  <!-- Full-height center layout / 全屏居中布局 -->
+  <!-- Full-height center layout -->
   <div class="container min-vh-100 d-flex align-items-center justify-content-center py-5">
     <div class="col-12 col-md-8 col-lg-5">
       <div class="card shadow-lg border-0 rounded-4">
@@ -7,7 +7,7 @@
           <h1 class="h3 text-center mb-1">Sign in</h1>
           <p class="text-muted text-center mb-4">
             Welcome back — sign in to continue<br />
-            <span class="small">欢迎回来，继续登录</span>
+            <span class="small">Welcome back</span>
           </p>
 
           <!-- OAuth: Google -->
@@ -18,7 +18,7 @@
             :disabled="loading"
             aria-label="Continue with Google"
           >
-            <!-- 简洁的Google G图标（SVG） -->
+            <!-- Google G Icon (SVG) -->
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 48 48">
               <path
                 d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 3l6-6C34.1 5 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.2-2.7-.5-4z"
@@ -40,16 +40,16 @@
                 fill="#FF3D00"
               />
             </svg>
-            <span>{{ loading ? 'Connecting… / 正在连接…' : 'Continue with Google' }}</span>
+            <span>{{ loading ? 'Connecting…' : 'Continue with Google' }}</span>
           </button>
 
           <!-- Divider -->
-          <div class="text-center text-muted small mb-3">or / 或者</div>
+          <div class="text-center text-muted small mb-3">or</div>
 
-          <!-- Email/Password form / 邮箱密码登录 -->
+          <!-- Email/Password form -->
           <form @submit.prevent="signin" novalidate>
             <div class="mb-3">
-              <label for="email" class="form-label">Email / 邮箱</label>
+              <label for="email" class="form-label">Email</label>
               <input
                 id="email"
                 type="email"
@@ -63,6 +63,7 @@
             </div>
 
             <div class="mb-2">
+              <label for="password" class="form-label">Password</label>
               <input
                 id="password"
                 type="password"
@@ -80,7 +81,7 @@
             </button>
           </form>
 
-          <!-- Error message / 错误提示 -->
+          <!-- Error message -->
           <p v-if="errMsg" class="text-danger small mt-3 mb-0" role="alert">
             {{ errMsg }}
           </p>
@@ -90,22 +91,17 @@
       <!-- Optional footer text -->
       <p class="text-center small text-muted mt-3 mb-0">
         By continuing you agree to our community guidelines.<br />
-        <span class="small">继续即表示你同意我们的社区准则</span>
+        <span class="small">By continuing you agree to our community guidelines</span>
       </p>
     </div>
   </div>
 </template>
 
 <script setup>
-// English + 中文注释：确保“外部登录默认角色 user”
+// Email/Password + Google 登录；首次登录建档到 /users/{uid}
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup,
-  // 若需重定向（iOS/Safari 环境更稳妥），可启用：signInWithRedirect, getRedirectResult
-} from 'firebase/auth'
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth, db } from '@/firebase/config'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 
@@ -116,38 +112,28 @@ const errMsg = ref('')
 const router = useRouter()
 
 /**
- * After login, guarantee a user doc exists.
- * 登录后保障用户文档存在：
- *  - 若 users/{uid} 不存在 → 创建 { role: 'user', createdAt }
- *  - 然后读取 role 跳转：admin → /admin，其余 → /
+ * After login, ensure /users/{uid} exists with { role:'user', email, createdAt }.
+ * 登录后确保 /users/{uid} 存在（若不存在则创建默认文档）。
  */
-const finishLoginAndRoute = async (uid, providerHint = undefined) => {
+const finishLoginAndRoute = async (uid, emailAddr = null) => {
   const userRef = doc(db, 'users', uid)
   const snap = await getDoc(userRef)
 
-  // 不存在则创建，默认角色为 user；如果是外部登录可记录 provider
   if (!snap.exists()) {
     await setDoc(
       userRef,
       {
-        role: 'user', // 默认角色
-        provider: providerHint || 'password',
+        role: 'user',
+        email: emailAddr,
         createdAt: serverTimestamp(),
       },
       { merge: true },
     )
   }
 
-  // 读取最新角色
   const data = (await getDoc(userRef)).data() || {}
   const role = data.role || 'user'
-
-  // 路由跳转
-  if (role === 'admin') {
-    router.push('/admin')
-  } else {
-    router.push('/')
-  }
+  role === 'admin' ? router.push('/admin') : router.push('/')
 }
 
 /** Email/Password sign-in / 邮箱密码登录 */
@@ -156,7 +142,7 @@ const signin = async () => {
   errMsg.value = ''
   try {
     const cred = await signInWithEmailAndPassword(auth, email.value, password.value)
-    await finishLoginAndRoute(cred.user.uid, 'password')
+    await finishLoginAndRoute(cred.user.uid, email.value) // 传入输入邮箱
   } catch (error) {
     const map = {
       'auth/invalid-email': 'Invalid email address. / 邮箱格式不正确',
@@ -166,21 +152,21 @@ const signin = async () => {
       'auth/too-many-requests': 'Too many attempts, try later. / 尝试过多，请稍后再试',
     }
     errMsg.value = map[error.code] || error.message || 'Login failed. / 登录失败'
-    console.log(error)
+    console.error(error)
   } finally {
     loading.value = false
   }
 }
 
-/** Google sign-in with default role=user / Google 外部登录（默认角色 user） */
+/** Google sign-in (default role=user) / Google 外部登录（默认角色 user） */
 const signinWithGoogle = async () => {
   loading.value = true
   errMsg.value = ''
   try {
     const provider = new GoogleAuthProvider()
-    // 可按需添加 scopes：provider.addScope('email')
+    // provider.addScope('email') // 可选：添加 scope
     const result = await signInWithPopup(auth, provider)
-    await finishLoginAndRoute(result.user.uid, 'google')
+    await finishLoginAndRoute(result.user.uid, result.user.email) // 传入 Google 返回的邮箱
   } catch (error) {
     const map = {
       'auth/popup-closed-by-user': 'Popup closed before completing sign in. / 弹窗在完成前被关闭',
@@ -189,7 +175,7 @@ const signinWithGoogle = async () => {
         'Account exists with different sign-in method. / 该邮箱已绑定其它登录方式',
     }
     errMsg.value = map[error.code] || error.message || 'Google sign-in failed. / Google 登录失败'
-    console.log(error)
+    console.error(error)
   } finally {
     loading.value = false
   }
@@ -197,7 +183,6 @@ const signinWithGoogle = async () => {
 </script>
 
 <style scoped>
-/* Subtle polish / 轻微质感提升 */
 .card {
   backdrop-filter: blur(3px);
 }
