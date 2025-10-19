@@ -7,6 +7,7 @@ import FirebaseRegisterView from '@/views/FirebaseRegisterView.vue'
 import RatingView from '@/views/RatingView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import AppointmentView from '@/views/AppointmentView.vue'
+import MapView from '@/views/MapView.vue'
 
 // Firebase Auth + Firestore for role checks
 import { onAuthStateChanged } from 'firebase/auth'
@@ -14,6 +15,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '@/firebase/config'
 
 const routes = [
+  { path: '/map', name: 'Map', component: MapView },
   { path: '/', name: 'Home', component: HomeView },
   { path: '/about', name: 'About', component: AboutView },
 

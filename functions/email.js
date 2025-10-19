@@ -1,4 +1,7 @@
 // functions/email.js  (ESM)
+/* eslint-env node */
+/* global Buffer, process */
+
 import { onRequest } from 'firebase-functions/v2/https'
 import logger from 'firebase-functions/logger'
 import admin from 'firebase-admin'
@@ -14,12 +17,18 @@ function escapeHtml(s = '') {
 function parseMultipart(req) {
   return new Promise((resolve, reject) => {
     try {
-      const busboy = Busboy({ headers: req.headers, limits: { fileSize: 5 * 1024 * 1024 } })
+      const busboy = Busboy({
+        headers: req.headers,
+        limits: { fileSize: 5 * 1024 * 1024 },
+      })
+
       const fields = {}
       let file = null
+
       busboy.on('field', (name, val) => {
         fields[name] = val
       })
+
       busboy.on('file', (_name, stream, info) => {
         const { filename, mimeType } = info
         const chunks = []
@@ -29,9 +38,17 @@ function parseMultipart(req) {
           file = { buffer: Buffer.concat(chunks), filename, mimeType }
         })
       })
+
       busboy.on('error', reject)
       busboy.on('finish', () => resolve({ fields, file }))
-      req.pipe(busboy)
+
+      // ✅ 关键：在 Gen2/HTTP onRequest 中优先使用 rawBody
+      if (req.rawBody && req.rawBody.length) {
+        busboy.end(req.rawBody)
+      } else {
+        // 兼容本地或其他环境
+        req.pipe(busboy)
+      }
     } catch (e) {
       reject(e)
     }

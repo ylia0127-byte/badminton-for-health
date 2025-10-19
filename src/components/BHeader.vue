@@ -15,6 +15,9 @@
         <li class="nav-item" v-if="isAuthed">
           <router-link to="/appointment" class="nav-link">Appointment</router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/map" class="nav-link">Map</router-link>
+        </li>
       </ul>
 
       <!-- 右侧账户区 -->

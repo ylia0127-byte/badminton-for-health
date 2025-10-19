@@ -291,8 +291,7 @@ async function onSubmit() {
       // Firebase not configured on this page; proceed without token
     }
 
-    const urlBase = import.meta.env.VITE_FUNCTIONS_URL || ''
-    const endpoint = `${urlBase}/sendContactEmail`
+    const endpoint = 'https://sendcontactemail-edhvttfqwq-ts.a.run.app'
 
     const data = new FormData()
     data.append('name', form.name)
