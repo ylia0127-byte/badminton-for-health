@@ -1,37 +1,41 @@
 <template>
   <section class="container py-4" aria-labelledby="title">
-    <h1 id="title" class="h4 mb-3">场地预约 · 周视图（4 时段）</h1>
+    <h1 id="title" class="h4 mb-3">Court Booking · Weekly View (4 Slots)</h1>
 
-    <!-- 场地 + 周切换 -->
+    <!-- Court selector + week navigation -->
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-      <label class="form-label m-0">场地</label>
+      <label class="form-label m-0">Court</label>
       <select v-model="selectedCourt" class="form-select" style="max-width: 220px">
         <option v-for="c in courts" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
 
       <div class="ms-auto d-flex align-items-center gap-2">
-        <button class="btn btn-outline-secondary btn-sm" @click="prevWeek" aria-label="上一周">
+        <button
+          class="btn btn-outline-secondary btn-sm"
+          @click="prevWeek"
+          aria-label="Previous week"
+        >
           ‹
         </button>
         <div class="fw-semibold">{{ weekRangeLabel }}</div>
-        <button class="btn btn-outline-secondary btn-sm" @click="nextWeek" aria-label="下一周">
+        <button class="btn btn-outline-secondary btn-sm" @click="nextWeek" aria-label="Next week">
           ›
         </button>
-        <button class="btn btn-outline-secondary btn-sm" @click="goThisWeek">本周</button>
+        <button class="btn btn-outline-secondary btn-sm" @click="goThisWeek">This Week</button>
       </div>
     </div>
 
-    <!-- 图例 -->
+    <!-- Legend -->
     <div class="d-flex align-items-center gap-3 small text-muted mb-2">
-      <span><span class="legend legend-free"></span> 可预约</span>
-      <span><span class="legend legend-mine"></span> 我的预约</span>
-      <span><span class="legend legend-busy"></span> 他人已占</span>
-      <span><span class="legend legend-past"></span> 已过期</span>
-      <span><span class="legend legend-selected"></span> 当前选择</span>
+      <span><span class="legend legend-free"></span> Available</span>
+      <span><span class="legend legend-mine"></span> My booking</span>
+      <span><span class="legend legend-busy"></span> Taken</span>
+      <span><span class="legend legend-past"></span> Past</span>
+      <span><span class="legend legend-selected"></span> Selected</span>
     </div>
 
-    <!-- 4×7 网格 -->
-    <div class="scheduler" role="grid" aria-label="四时段周视图">
+    <!-- 4×7 grid -->
+    <div class="scheduler" role="grid" aria-label="Weekly view with four time blocks">
       <div class="grid-head"></div>
       <div v-for="d in 7" :key="'h' + d" class="grid-head day">
         {{ weekdayLabel(d - 1) }}<br />
@@ -52,61 +56,61 @@
       </template>
     </div>
 
-    <!-- 预约确认 -->
+    <!-- Create confirmation -->
     <div v-if="pendingCreate" class="confirm card border-0 shadow-sm mt-3">
       <div class="card-body d-flex flex-wrap align-items-center gap-3">
         <div>
-          <div class="fw-semibold">确认预约</div>
+          <div class="fw-semibold">Confirm booking</div>
           <div class="small text-muted">
             {{ courtsMap[selectedCourt].name }} · {{ formatDT(pendingCreate.start) }} —
             {{ formatDT(pendingCreate.end) }}
           </div>
         </div>
         <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-light" @click="pendingCreate = null">取消</button>
+          <button class="btn btn-light" @click="pendingCreate = null">Cancel</button>
           <button class="btn btn-dark" :disabled="loading" @click="confirmBooking">
-            <span v-if="!loading">确认</span>
+            <span v-if="!loading">Confirm</span>
             <span v-else class="d-inline-flex align-items-center gap-2">
               <span
                 class="spinner-border spinner-border-sm"
                 role="status"
                 aria-hidden="true"
               ></span>
-              提交中…
+              Submitting…
             </span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 取消确认（仅我的预约） -->
+    <!-- Cancel confirmation (only for my bookings) -->
     <div v-if="pendingCancel" class="confirm card border-0 shadow-sm mt-3">
       <div class="card-body d-flex flex-wrap align-items-center gap-3">
         <div>
-          <div class="fw-semibold">取消预约</div>
+          <div class="fw-semibold">Cancel booking</div>
           <div class="small text-muted">
             {{ courtsMap[selectedCourt].name }} · {{ formatDT(pendingCancel.start) }} —
             {{ formatDT(pendingCancel.end) }}
           </div>
         </div>
         <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-light" @click="pendingCancel = null">返回</button>
+          <button class="btn btn-light" @click="pendingCancel = null">Back</button>
           <button class="btn btn-danger" :disabled="loading" @click="confirmCancel">
-            <span v-if="!loading">取消预约</span>
+            <span v-if="!loading">Cancel booking</span>
             <span v-else class="d-inline-flex align-items-center gap-2">
               <span
                 class="spinner-border spinner-border-sm"
                 role="status"
                 aria-hidden="true"
               ></span>
-              提交中…
+              Submitting…
             </span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 状态提示 -->
+    <!-- Status -->
     <p class="mt-2 small" :class="statusClass" role="status" aria-live="polite">{{ status }}</p>
   </section>
 </template>
@@ -116,18 +120,18 @@ import { ref, computed, watch, onMounted } from 'vue'
 import axios from 'axios'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 
-/** 三个 HTTP 触发器 URL（已替换为你的实际地址） */
+/** Three HTTPS function endpoints (replace with your actual endpoints if different) */
 const FUNCTION_URL_LIST = 'https://listbookings-edhvttfqwq-uc.a.run.app'
 const FUNCTION_URL_CREATE = 'https://createbooking-edhvttfqwq-uc.a.run.app'
 const FUNCTION_URL_DELETE = 'https://deletebooking-edhvttfqwq-uc.a.run.app'
 
-/** Axios 实例 + 错误提取 */
+/** Axios instance + error extractor */
 const http = axios.create({ timeout: 10000 })
 function pickError(err) {
   return err?.response?.data?.error || err?.response?.statusText || err?.message || 'Network Error'
 }
 
-/** 固定时段定义：四个区块 */
+/** Fixed slot definitions: four blocks */
 const SLOT_DEFS = [
   { label: '08:00–10:00', startH: 8, startM: 0, endH: 10, endM: 0 },
   { label: '10:00–12:00', startH: 10, startM: 0, endH: 12, endM: 0 },
@@ -135,18 +139,19 @@ const SLOT_DEFS = [
   { label: '15:00–17:00', startH: 15, startM: 0, endH: 17, endM: 0 },
 ]
 
-/** 场地与周时间 */
+/** Courts and current week anchor */
 const courts = [
-  { id: 'court-a', name: 'A 号场地' },
-  { id: 'court-b', name: 'B 号场地' },
-  { id: 'court-c', name: 'C 号场地' },
+  { id: 'court-a', name: 'Court A' },
+  { id: 'court-b', name: 'Court B' },
+  { id: 'court-c', name: 'Court C' },
 ]
 const courtsMap = Object.fromEntries(courts.map((c) => [c.id, c]))
 const selectedCourt = ref(courts[0].id)
 
+/** Week starts on Sunday (consistent with getDay(): 0 = Sunday) */
 function startOfWeek(dt) {
   const d = new Date(dt)
-  const w = d.getDay() // 以周一为一周开始
+  const w = d.getDay() // 0..6, 0 = Sunday
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() - w)
   return d
@@ -156,7 +161,7 @@ function ymdLocal(date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}` // 本地时区的 yyyy-mm-dd
+  return `${y}-${m}-${day}`
 }
 const weekStart = ref(startOfWeek(new Date()))
 
@@ -167,7 +172,7 @@ function addDays(d, n) {
 }
 function weekdayLabel(i) {
   return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][i]
-} // 按你原样保留
+}
 function dayISO(i) {
   return ymdLocal(addDays(weekStart.value, i))
 }
@@ -182,25 +187,25 @@ function goThisWeek() {
   weekStart.value = startOfWeek(new Date())
 }
 
-/** 登录用户（用于“我的预约”与鉴权） */
+/** Auth user (used for "my booking" and auth headers) */
 const uid = ref(null)
 const auth = getAuth()
 onMounted(() => {
   onAuthStateChanged(auth, async (u) => {
     uid.value = u?.uid || null
-    await fetchWeek() // 用户切换后刷新
+    await fetchWeek()
   })
 })
 
-/** 获取带 ID Token 的 headers；未登录直接抛错（避免莫名其妙的 Network Error） */
+/** Acquire headers with ID token; throw if not signed in */
 async function authHeadersRequired() {
   const user = auth.currentUser
-  if (!user) throw new Error('请先登录再进行预约或查看数据')
+  if (!user) throw new Error('Please sign in to view or create bookings')
   const token = await user.getIdToken()
   return { Authorization: `Bearer ${token}` }
 }
 
-/** 已占用数据 */
+/** Occupancy data */
 const busy = ref([]) // [{id,courtId,day,slotIndex,start,end,userId}]
 async function fetchWeek() {
   try {
@@ -209,11 +214,7 @@ async function fetchWeek() {
     const weekEndMS = addDays(weekStart.value, 7).getTime()
     const res = await http.post(
       FUNCTION_URL_LIST,
-      {
-        courtId: selectedCourt.value,
-        weekStartMS,
-        weekEndMS, // ← 用毫秒值
-      },
+      { courtId: selectedCourt.value, weekStartMS, weekEndMS },
       { headers },
     )
     busy.value = res?.data?.rows || []
@@ -227,7 +228,7 @@ async function fetchWeek() {
 }
 watch([weekStart, selectedCourt], fetchWeek, { immediate: true })
 
-/** 网格状态与交互 */
+/** Grid state & interaction */
 const now = ref(new Date())
 setInterval(() => (now.value = new Date()), 60 * 1000)
 
@@ -299,10 +300,10 @@ function isSlotInteractive(dIndex, sIndex) {
 function ariaLabel(dIndex, sIndex) {
   const day = weekdayLabel(dIndex)
   const block = SLOT_DEFS[sIndex].label
-  if (isMine(dIndex, sIndex)) return `${day} ${block}，我的预约，可取消`
-  if (isBusyOther(dIndex, sIndex)) return `${day} ${block}，他人已占用`
-  if (isPast(dIndex, sIndex)) return `${day} ${block}，已过期`
-  return `${day} ${block}，可预约`
+  if (isMine(dIndex, sIndex)) return `${day} ${block}, your booking, cancellable`
+  if (isBusyOther(dIndex, sIndex)) return `${day} ${block}, taken by another user`
+  if (isPast(dIndex, sIndex)) return `${day} ${block}, past`
+  return `${day} ${block}, available`
 }
 function handleClick(dIndex, sIndex) {
   status.value = ''
@@ -313,7 +314,7 @@ function handleClick(dIndex, sIndex) {
   const end = slotEndDate(dIndex, sdef)
 
   if (isMine(dIndex, sIndex)) {
-    const bookingId = `${selectedCourt.value}_${day}_${sIndex}` // 确定性 ID
+    const bookingId = `${selectedCourt.value}_${day}_${sIndex}` // deterministic ID
     pendingCancel.value = { bookingId, courtId: selectedCourt.value, start, end }
     pendingCreate.value = null
     return
@@ -324,7 +325,7 @@ function handleClick(dIndex, sIndex) {
   }
 }
 
-/** 提交/取消 */
+/** Submit/cancel */
 function formatDT(d) {
   return new Date(d).toISOString().slice(0, 16).replace('T', ' ')
 }
@@ -335,7 +336,7 @@ async function confirmBooking() {
   try {
     const headers = await authHeadersRequired()
     const { courtId, start, end } = pendingCreate.value
-    const day = ymdLocal(start) // ← 替换原来的 start.toISOString().slice(0,10)
+    const day = ymdLocal(start)
     const sIndex = SLOT_DEFS.findIndex(
       (s) => s.startH === start.getHours() && s.endH === end.getHours(),
     )
@@ -351,7 +352,7 @@ async function confirmBooking() {
       { headers },
     )
     await fetchWeek()
-    status.value = '预约成功'
+    status.value = 'Booking created'
     statusClass.value = 'text-success'
     pendingCreate.value = null
   } catch (e) {
@@ -370,7 +371,7 @@ async function confirmCancel() {
     const headers = await authHeadersRequired()
     await http.post(FUNCTION_URL_DELETE, { bookingId: pendingCancel.value.bookingId }, { headers })
     await fetchWeek()
-    status.value = '已取消预约'
+    status.value = 'Booking cancelled'
     statusClass.value = 'text-success'
     pendingCancel.value = null
   } catch (e) {
@@ -398,7 +399,7 @@ async function confirmCancel() {
     sans-serif;
 }
 
-/* 图例 */
+/* Legend */
 .legend {
   display: inline-block;
   width: 16px;
@@ -428,7 +429,7 @@ async function confirmCancel() {
   border: 1px dashed #ffd43b;
 }
 
-/* 网格 */
+/* Grid */
 .scheduler {
   display: grid;
   grid-template-columns: 140px repeat(7, 1fr);
@@ -471,7 +472,7 @@ async function confirmCancel() {
   border-right: 1px solid #e9ecef;
 }
 
-/* 单元格 */
+/* Cells */
 .slot {
   border: 1px solid #f1f3f5;
   background: white;
@@ -498,13 +499,13 @@ async function confirmCancel() {
 .slot.mine {
   background: #ffe08a;
   border-color: #ffd166;
-} /* 我的预约：黄色高亮 */
+}
 .slot.selected {
   outline: 2px dashed #ffd43b;
   outline-offset: -3px;
-} /* 当前选择：虚线强调 */
+}
 
-/* 确认条 */
+/* Confirmation bar */
 .confirm .card-body {
   border-left: 5px solid #28a745;
   border-radius: 8px;
