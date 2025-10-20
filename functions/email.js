@@ -1,108 +1,165 @@
-// functions/email.js  (ESM)
 /* eslint-env node */
-/* global Buffer, process */
+/* global process, Buffer */
 
-import { onRequest } from 'firebase-functions/v2/https'
+import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore'
+import { defineSecret } from 'firebase-functions/params'
 import logger from 'firebase-functions/logger'
 import admin from 'firebase-admin'
-import Busboy from 'busboy'
-import sgMail from '@sendgrid/mail'
+import axios from 'axios'
 
 if (!admin.apps.length) admin.initializeApp()
 
-function escapeHtml(s = '') {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+// ---------------------------
+//  Secret configuration + ordinary env vars
+// ---------------------------
+const BREVO_API_KEY = defineSecret('BREVO_API_KEY') // Secret Manager injection
+
+const MAIL_FROM = process.env.MAIL_FROM || 'ylia0127@student.monash.edu'
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'Badminton for Health'
+const MAIL_SUBJECT_CREATED = process.env.MAIL_SUBJECT_CREATED || 'Your court booking is confirmed'
+const MAIL_SUBJECT_CANCELLED =
+  process.env.MAIL_SUBJECT_CANCELLED || 'Your court booking has been cancelled'
+
+// ---------------------------
+//  Utility functions
+// ---------------------------
+function safe(v, f = '—') {
+  return v == null ? f : String(v)
 }
 
-function parseMultipart(req) {
-  return new Promise((resolve, reject) => {
+function fmt(iso) {
+  try {
+    const d = new Date(iso)
+    return `${d.toISOString().slice(0, 16).replace('T', ' ')} (UTC)`
+  } catch {
+    return safe(iso)
+  }
+}
+
+function buildTxt({ action, bookingId, data }) {
+  return [
+    `Action: ${action}`,
+    `Booking ID: ${safe(bookingId)}`,
+    `Court: ${safe(data?.courtId)}`,
+    `Day: ${safe(data?.day)}`,
+    `Slot Index: ${safe(data?.slotIndex)}`,
+    `Start: ${fmt(data?.startISO)}`,
+    `End: ${fmt(data?.endISO)}`,
+    `User ID: ${safe(data?.userId)}`,
+    `Generated At: ${new Date().toISOString()}`,
+  ].join('\n')
+}
+
+async function resolveRecipientEmail({ data }) {
+  if (data?.email) return data.email
+  if (data?.userId) {
     try {
-      const busboy = Busboy({
-        headers: req.headers,
-        limits: { fileSize: 5 * 1024 * 1024 },
-      })
-
-      const fields = {}
-      let file = null
-
-      busboy.on('field', (name, val) => {
-        fields[name] = val
-      })
-
-      busboy.on('file', (_name, stream, info) => {
-        const { filename, mimeType } = info
-        const chunks = []
-        stream.on('data', (d) => chunks.push(d))
-        stream.on('limit', () => reject(new Error('File too large')))
-        stream.on('end', () => {
-          file = { buffer: Buffer.concat(chunks), filename, mimeType }
-        })
-      })
-
-      busboy.on('error', reject)
-      busboy.on('finish', () => resolve({ fields, file }))
-
-      // ✅ 关键：在 Gen2/HTTP onRequest 中优先使用 rawBody
-      if (req.rawBody && req.rawBody.length) {
-        busboy.end(req.rawBody)
-      } else {
-        // 兼容本地或其他环境
-        req.pipe(busboy)
-      }
+      const u = await admin.auth().getUser(String(data.userId))
+      return u?.email || null
     } catch (e) {
-      reject(e)
+      logger.warn('Auth lookup failed for userId:', data?.userId, e)
     }
-  })
+  }
+  return null
 }
 
-export const sendContactEmail = onRequest(
+// ---------------------------
+//  Send email via Brevo API (with TXT attachment)
+// ---------------------------
+async function sendEmail({ to, subject, txtContent, eventId, apiKey }) {
+  const url = 'https://api.brevo.com/v3/smtp/email'
+  const payload = {
+    sender: { name: MAIL_FROM_NAME, email: MAIL_FROM },
+    to: [{ email: to }],
+    subject,
+
+    htmlContent: `<pre>${txtContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`,
+    textContent: txtContent,
+
+    attachment: [
+      {
+        content: Buffer.from(txtContent, 'utf8').toString('base64'),
+        name: 'booking.txt',
+        contentType: 'text/plain',
+      },
+    ],
+    headers: { 'X-Cloud-Event-Id': eventId },
+  }
+
+  const headers = {
+    'api-key': apiKey,
+    'Content-Type': 'application/json',
+  }
+
+  try {
+    const res = await axios.post(url, payload, { headers })
+    logger.info('Brevo response:', res.data)
+    return res.status
+  } catch (e) {
+    logger.error('Brevo send error:', e.response?.data || e.message)
+    throw e
+  }
+}
+
+// ---------------------------
+//  Firestore triggers
+// ---------------------------
+export const onBookingCreated = onDocumentCreated(
   {
-    region: 'australia-southeast1',
-    cors: true,
-    secrets: ['SENDGRID_API_KEY', 'CONTACT_INBOX', 'MAIL_FROM'],
-    timeoutSeconds: 30,
-    memory: '256MiB',
+    region: 'us-central1',
+    document: 'bookings/{bookingId}',
+    secrets: [BREVO_API_KEY],
   },
-  async (req, res) => {
-    if (req.method === 'OPTIONS') return res.status(204).end()
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
+  async (event) => {
+    const bookingId = event.params.bookingId
+    const data = event.data?.data()
+    if (!data) return logger.error('No booking data on create')
+
+    const to = await resolveRecipientEmail({ data })
+    if (!to) return logger.warn('No recipient email for booking:', bookingId)
+
+    const txt = buildTxt({ action: 'CREATED', bookingId, data })
     try {
-      const { fields, file } = await parseMultipart(req)
-      const { name, email, subject, message } = fields || {}
-      if (!name || !email || !subject || !message) {
-        return res.status(400).json({ error: 'Missing required fields.' })
-      }
-
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY)
-      const to = process.env.CONTACT_INBOX || 'admin@your-nfp.org'
-      const from = process.env.MAIL_FROM || 'no-reply@your-nfp.org'
-
-      const msg = {
+      const status = await sendEmail({
         to,
-        from,
-        replyTo: email,
-        subject: `[Contact] ${subject}`,
-        text: `From: ${name} <${email}>\n\n${message}`,
-        html: `<p><strong>From:</strong> ${escapeHtml(name)} &lt;${escapeHtml(email)}&gt;</p>
-               <p style="white-space:pre-wrap">${escapeHtml(message)}</p>`,
-        attachments:
-          file && file.buffer
-            ? [
-                {
-                  content: file.buffer.toString('base64'),
-                  filename: file.filename,
-                  type: file.mimeType || 'application/octet-stream',
-                  disposition: 'attachment',
-                },
-              ]
-            : undefined,
-      }
+        subject: MAIL_SUBJECT_CREATED,
+        txtContent: txt,
+        eventId: event.id,
+        apiKey: BREVO_API_KEY.value(),
+      })
+      logger.info('Email sent (created):', { bookingId, to, status })
+    } catch (e) {
+      logger.error('Brevo send error (create):', e)
+    }
+  },
+)
 
-      await sgMail.send(msg)
-      return res.json({ ok: true })
-    } catch (err) {
-      logger.error('sendContactEmail failed:', err)
-      return res.status(500).json({ error: 'Failed to send email.' })
+export const onBookingDeleted = onDocumentDeleted(
+  {
+    region: 'us-central1',
+    document: 'bookings/{bookingId}',
+    secrets: [BREVO_API_KEY],
+  },
+  async (event) => {
+    const bookingId = event.params.bookingId
+    const data = event.data?.data()
+    if (!data) return logger.warn('No booking data on delete')
+
+    const to = await resolveRecipientEmail({ data })
+    if (!to) return logger.warn('No recipient email for deleted booking:', bookingId)
+
+    const txt = buildTxt({ action: 'CANCELLED', bookingId, data })
+    try {
+      const status = await sendEmail({
+        to,
+        subject: MAIL_SUBJECT_CANCELLED,
+        txtContent: txt,
+        eventId: event.id,
+        apiKey: BREVO_API_KEY.value(),
+      })
+      logger.info('Email sent (cancelled):', { bookingId, to, status })
+    } catch (e) {
+      logger.error('Brevo send error (delete):', e)
     }
   },
 )
