@@ -1,51 +1,65 @@
 <template>
   <div class="container py-4">
-    <h1 class="mb-3">Program Rating</h1>
+    <div class="col-12 col-lg-8 mx-auto">
+      <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+          <h1 class="display-6 mb-1">Web Application Rating</h1>
+          <p class="text-muted mb-4">
+            Rate this web app. Your rating is per user and can be updated anytime.
+          </p>
 
-    <!-- 当前条目 -->
-    <p class="text-muted mb-2">
-      Item: <code>{{ itemId }}</code>
-    </p>
+          <!-- Summary -->
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="fs-5 fw-semibold">Average: {{ avg.toFixed(1) }}</div>
+            <span class="badge rounded-pill text-bg-secondary">{{ count }} ratings</span>
+          </div>
 
-    <!-- 评分汇总 -->
-    <div class="d-flex align-items-center gap-2 mb-2">
-      <div class="fs-5">Average: {{ avg.toFixed(1) }}</div>
-      <span class="badge text-bg-secondary">{{ count }} ratings</span>
+          <!-- Stars: disabled when not authed -->
+          <div
+            class="rating-wrap d-flex align-items-center gap-2 mb-2"
+            role="radiogroup"
+            aria-label="Star rating"
+          >
+            <button
+              v-for="i in 5"
+              :key="i"
+              class="star-btn"
+              :aria-label="`Rate ${i}`"
+              :disabled="!isAuthed || saving"
+              @click="setRating(i)"
+            >
+              <span :class="{ active: i <= myRating }">{{ i <= myRating ? '★' : '☆' }}</span>
+            </button>
+
+            <span class="ms-2 small text-muted" v-if="isAuthed">
+              Your rating: <strong>{{ myRating || '—' }}</strong> (click to change)
+            </span>
+            <span class="ms-2 small text-muted" v-else>
+              Please <router-link to="/login">sign in</router-link> to rate.
+            </span>
+          </div>
+
+          <div v-if="errorMsg" class="alert alert-warning py-2 mt-2">{{ errorMsg }}</div>
+
+          <hr class="my-4" />
+
+          <p class="small text-muted mb-0">
+            Notes: Ratings are one per user. Updating your stars replaces your previous rating.
+          </p>
+        </div>
+      </div>
     </div>
-
-    <!-- 星级控件：未登录禁用 -->
-    <div class="d-flex align-items-center gap-1 mb-3" role="radiogroup" aria-label="Star rating">
-      <button
-        v-for="i in 5"
-        :key="i"
-        class="btn btn-link p-0 fs-3"
-        :aria-label="`Rate ${i}`"
-        :disabled="!isAuthed || saving"
-        @click="setRating(i)"
-      >
-        <span :class="{ 'fw-bold': i <= myRating }">{{ i <= myRating ? '★' : '☆' }}</span>
-      </button>
-
-      <span class="ms-2 small text-muted" v-if="isAuthed">
-        Your rating: <strong>{{ myRating || '—' }}</strong> (click to change)
-      </span>
-      <span class="ms-2 small text-muted" v-else>
-        Please <router-link to="/login">sign in</router-link> to rate.
-      </span>
-    </div>
-
-    <!-- 错误/提示 -->
-    <div v-if="errorMsg" class="alert alert-warning py-2">{{ errorMsg }}</div>
-
-    <hr class="my-4" />
-
-    <p class="small text-muted mb-0">
-      Notes: Ratings are per user per item. Updating your stars replaces your previous rating.
-    </p>
   </div>
 </template>
 
 <script setup>
+/**
+ * Web Application Rating
+ * - Title changed to "Web Application Rating"
+ * - Removed the visible "Item: program:p1" line
+ * - Kept route param to select the rated item, but it is not shown in the UI
+ * - Light visual polish for stars and layout
+ */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
@@ -58,16 +72,14 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 
-// 1) 读取路由参数中的 itemId，或使用一个示例 ID
+// Item identifier (from route) – still used for Firestore paths, just not displayed
 const route = useRoute()
 const itemId = computed(() => route.params.itemId || 'program:p1')
 
-// 2) 登录状态
 const isAuthed = ref(false)
 const uid = ref(null)
 const userEmail = ref('')
 
-// 3) 本人评分 + 汇总
 const myRating = ref(0)
 const avg = ref(0)
 const count = ref(0)
@@ -81,15 +93,12 @@ let unsubScores = null
 let unsubAuth = null
 
 onMounted(() => {
-  // 监听登录状态
   unsubAuth = onAuthStateChanged(auth, (u) => {
     isAuthed.value = !!u
     uid.value = u?.uid || null
     userEmail.value = u?.email || ''
-    // 登录变化后，重新计算本人评分（由汇总订阅统一更新）
   })
 
-  // 订阅该 item 的所有评分文档
   const scoresCol = collection(db, 'ratings', itemId.value, 'scores')
   unsubScores = onSnapshot(
     scoresCol,
@@ -104,9 +113,7 @@ onMounted(() => {
           sum += s
           n += 1
         }
-        if (docSnap.id === uid.value) {
-          mine = s
-        }
+        if (docSnap.id === uid.value) mine = s
       })
       avg.value = n ? sum / n : 0
       count.value = n
@@ -123,7 +130,6 @@ onUnmounted(() => {
   unsubAuth && unsubAuth()
 })
 
-// 4) 写入/更新评分（需登录）
 async function setRating(stars) {
   errorMsg.value = ''
   if (!isAuthed.value || !uid.value) {
@@ -147,7 +153,7 @@ async function setRating(stars) {
       },
       { merge: true },
     )
-    // onSnapshot 会自动刷新 myRating / avg / count
+    // onSnapshot updates avg/myRating/count
   } catch (e) {
     errorMsg.value = `Could not save rating: ${e.message}`
   } finally {
@@ -157,8 +163,38 @@ async function setRating(stars) {
 </script>
 
 <style scoped>
-/* Minimal styling; relies on Bootstrap if present */
 .container {
-  max-width: 800px;
+  max-width: 880px;
+}
+
+/* Stars */
+.rating-wrap {
+  user-select: none;
+}
+.star-btn {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  line-height: 1;
+  cursor: pointer;
+}
+.star-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.star-btn span {
+  font-size: 2rem; /* bigger, easier to click */
+  display: inline-block;
+  transform: translateY(-1px);
+  color: #6c8cff; /* outline color for empty star */
+  text-shadow: 0 0 0 currentColor;
+}
+.star-btn span.active {
+  color: #2f6bff; /* filled star color */
+}
+.star-btn:hover span,
+.star-btn:focus span {
+  filter: brightness(0.9);
+  outline: none;
 }
 </style>
