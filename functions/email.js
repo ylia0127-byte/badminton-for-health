@@ -9,9 +9,7 @@ import axios from 'axios'
 
 if (!admin.apps.length) admin.initializeApp()
 
-// ---------------------------
 //  Secret configuration + ordinary env vars
-// ---------------------------
 const BREVO_API_KEY = defineSecret('BREVO_API_KEY') // Secret Manager injection
 
 const MAIL_FROM = process.env.MAIL_FROM || 'ylia0127@student.monash.edu'
@@ -20,9 +18,7 @@ const MAIL_SUBJECT_CREATED = process.env.MAIL_SUBJECT_CREATED || 'Your court boo
 const MAIL_SUBJECT_CANCELLED =
   process.env.MAIL_SUBJECT_CANCELLED || 'Your court booking has been cancelled'
 
-// ---------------------------
 //  Utility functions
-// ---------------------------
 function safe(v, f = '—') {
   return v == null ? f : String(v)
 }
@@ -63,9 +59,7 @@ async function resolveRecipientEmail({ data }) {
   return null
 }
 
-// ---------------------------
 //  Send email via Brevo API (with TXT attachment)
-// ---------------------------
 async function sendEmail({ to, subject, txtContent, eventId, apiKey }) {
   const url = 'https://api.brevo.com/v3/smtp/email'
   const payload = {
@@ -101,9 +95,7 @@ async function sendEmail({ to, subject, txtContent, eventId, apiKey }) {
   }
 }
 
-// ---------------------------
 //  Firestore triggers
-// ---------------------------
 export const onBookingCreated = onDocumentCreated(
   {
     region: 'us-central1',

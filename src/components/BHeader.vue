@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <nav class="container d-flex align-items-center justify-content-between py-3">
-      <!-- 左侧主导航 -->
+      <!-- main menu -->
       <ul class="nav gap-2 gap-md-3">
         <li class="nav-item">
           <router-link to="/" class="nav-link" exact>Home</router-link>
@@ -23,7 +23,7 @@
         </li>
       </ul>
 
-      <!-- 右侧账户区 -->
+      <!-- account area -->
       <ul class="nav gap-2 gap-md-3">
         <template v-if="!isAuthed">
           <li class="nav-item">
@@ -58,11 +58,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 引入优雅字体 */
+/* import Google font */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
 .app-header {
-  background-color: #28a745; /* Bootstrap绿色 */
+  background-color: #28a745; /* Bootstrap green */
   width: 100%;
   color: white;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
@@ -78,7 +78,7 @@ onMounted(() => {
     sans-serif;
 }
 
-/* 导航链接样式 */
+/* Navigation link style */
 .nav-link {
   color: white !important;
   font-weight: 600;
@@ -90,20 +90,20 @@ onMounted(() => {
   letter-spacing: 0.2px;
 }
 
-/* 悬停状态 */
+/* Hover state */
 .nav-link:hover,
 .nav-link:focus {
   background-color: rgba(255, 255, 255, 0.18);
   text-decoration: none;
 }
 
-/* 激活状态（当前页面） */
+/* Active link (current page) */
 .router-link-active,
 .router-link-exact-active {
   background-color: rgba(255, 255, 255, 0.28);
 }
 
-/* 响应式布局 */
+/* Responsive layout for small screens */
 @media (max-width: 576px) {
   .container {
     flex-direction: column;

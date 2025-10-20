@@ -1,9 +1,9 @@
 /* eslint-env node */
 /**
- * Badminton booking - HTTP APIs (onRequest + ID Token)
+ * Badminton Booking – HTTP APIs (onRequest + ID Token)
  * - firebase-functions v2
- * - 统一外层 CORS 处理 + Promise 返回
- * - 三个端点：
+ * - Unified outer CORS handler + Promise-based response
+ * - Three endpoints:
  *   POST /createBooking
  *   POST /listBookings
  *   POST /deleteBooking
@@ -15,14 +15,14 @@ import corsLib from 'cors'
 admin.initializeApp()
 const db = admin.firestore()
 
-// 允许所有来源；生产可改为你的站点白名单：{ origin: ["https://your.domain"] }
+// Allow all origins; for production, replace with your domain whitelist.
 const cors = corsLib({ origin: true })
 
 /**
- * 统一包装 onRequest 处理函数：
- * - 外层 CORS 一次性处理
- * - 处理 OPTIONS 预检
- * - 以 Promise 形式结束响应（避免 v2 某些情况下 hanging）
+ * Wrapper for onRequest handlers:
+ * - Handles CORS and OPTIONS preflight
+ * - Wraps in a Promise to ensure response completion
+ * - Catches and logs uncaught exceptions to prevent hanging
  */
 function wrap(handler) {
   return (req, res) =>
@@ -35,12 +35,12 @@ function wrap(handler) {
           }
           await handler(req, res)
         } catch (e) {
-          // 兜底错误（防止未捕获异常导致 500 之外的行为）
+          // Catch any unhandled exceptions to avoid hanging
           console.error('UNCAUGHT:', e)
           try {
             res.status(500).json({ error: e?.message || String(e) })
           } catch {
-            // ignore double send
+            // ignore double-send errors
           }
         } finally {
           resolve()
@@ -49,7 +49,7 @@ function wrap(handler) {
     })
 }
 
-// 固定 4 个时段（与前端一致）
+// Fixed 4 time slots (must match frontend definition)
 const SLOT_DEFS = [
   { startH: 8, endH: 10 },
   { startH: 10, endH: 12 },
@@ -57,12 +57,12 @@ const SLOT_DEFS = [
   { startH: 15, endH: 17 },
 ]
 
-// 小工具：统一响应
+// Helper: unified JSON response
 function send(res, code, payload) {
   res.status(code).json(payload)
 }
 
-// 校验 Authorization: Bearer <ID_TOKEN>，返回 uid
+// Validate Authorization: Bearer <ID_TOKEN> and return uid
 async function requireUid(req, res) {
   const auth = req.headers.authorization || ''
   const m = auth.match(/^Bearer\s+(.+)$/i)
@@ -79,12 +79,12 @@ async function requireUid(req, res) {
   }
 }
 
-// 生成确定性文档ID（防止同一时段并发重复）
+// Deterministic booking document ID to prevent duplicates
 function bookingIdOf(courtId, day, slotIndex) {
   return `${courtId}_${day}_${slotIndex}`
 }
 
-// 校验创建参数
+// Validate request body for createBooking
 function assertCreatePayload(body) {
   const { courtId, day, slotIndex, startISO, endISO } = body || {}
   if (!courtId || !day || typeof slotIndex !== 'number' || !startISO || !endISO) {
@@ -103,14 +103,14 @@ function assertCreatePayload(body) {
   return { courtId, day, slotIndex, start, end }
 }
 
-/* ----------------------------- APIs ---------------------------------- */
+/* ----------------------------- API Handlers ---------------------------------- */
 
 // POST /createBooking
 export const createBooking = onRequest(
   wrap(async (req, res) => {
     if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' })
 
-    const uid = await requireUid(req, res) // 若失败会抛出并已响应 401
+    const uid = await requireUid(req, res) // 401 handled if invalid
 
     const parsed = assertCreatePayload(req.body)
     if (typeof parsed === 'string') return send(res, 400, { error: parsed })
@@ -132,7 +132,7 @@ export const createBooking = onRequest(
       return send(res, 200, { id })
     } catch (e) {
       const msg = e?.message || String(e)
-      // Firestore create() 冲突：ALREADY_EXISTS（code 6）
+      // Firestore create() conflict: ALREADY_EXISTS (code 6)
       if (/ALREADY_EXISTS/i.test(msg) || e?.code === 6) {
         return send(res, 409, { error: 'slot already booked' })
       }
@@ -201,9 +201,3 @@ export const deleteBooking = onRequest(
     }
   }),
 )
-
-/* --------------------------- 可选健康检查 ------------------------------
-export const health = onRequest(wrap(async (_req, res) => {
-  send(res, 200, { ok: true });
-}));
------------------------------------------------------------------------ */
