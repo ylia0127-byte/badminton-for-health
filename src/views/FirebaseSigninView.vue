@@ -98,7 +98,6 @@
 </template>
 
 <script setup>
-// Email/Password + Google 登录；首次登录建档到 /users/{uid}
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
@@ -113,7 +112,6 @@ const router = useRouter()
 
 /**
  * After login, ensure /users/{uid} exists with { role:'user', email, createdAt }.
- * 登录后确保 /users/{uid} 存在（若不存在则创建默认文档）。
  */
 const finishLoginAndRoute = async (uid, emailAddr = null) => {
   const userRef = doc(db, 'users', uid)
@@ -136,45 +134,45 @@ const finishLoginAndRoute = async (uid, emailAddr = null) => {
   role === 'admin' ? router.push('/admin') : router.push('/')
 }
 
-/** Email/Password sign-in / 邮箱密码登录 */
+/** Email/Password sign-in*/
 const signin = async () => {
   loading.value = true
   errMsg.value = ''
   try {
     const cred = await signInWithEmailAndPassword(auth, email.value, password.value)
-    await finishLoginAndRoute(cred.user.uid, email.value) // 传入输入邮箱
+    await finishLoginAndRoute(cred.user.uid, email.value)
   } catch (error) {
     const map = {
-      'auth/invalid-email': 'Invalid email address. / 邮箱格式不正确',
-      'auth/user-disabled': 'This account has been disabled. / 帐号已被禁用',
-      'auth/user-not-found': 'No user with this email. / 用户不存在',
-      'auth/wrong-password': 'Incorrect password. / 密码错误',
-      'auth/too-many-requests': 'Too many attempts, try later. / 尝试过多，请稍后再试',
+      'auth/invalid-email': 'Invalid email address.',
+      'auth/user-disabled': 'This account has been disabled.',
+      'auth/user-not-found': 'No user with this email.',
+      'auth/wrong-password': 'Incorrect password.',
+      'auth/too-many-requests': 'Too many attempts, try later.',
     }
-    errMsg.value = map[error.code] || error.message || 'Login failed. / 登录失败'
+    errMsg.value = map[error.code] || error.message || 'Login failed.'
     console.error(error)
   } finally {
     loading.value = false
   }
 }
 
-/** Google sign-in (default role=user) / Google 外部登录（默认角色 user） */
+/** Google sign-in */
 const signinWithGoogle = async () => {
   loading.value = true
   errMsg.value = ''
   try {
     const provider = new GoogleAuthProvider()
-    // provider.addScope('email') // 可选：添加 scope
+    // provider.addScope('email')
     const result = await signInWithPopup(auth, provider)
-    await finishLoginAndRoute(result.user.uid, result.user.email) // 传入 Google 返回的邮箱
+    await finishLoginAndRoute(result.user.uid, result.user.email)
   } catch (error) {
     const map = {
-      'auth/popup-closed-by-user': 'Popup closed before completing sign in. / 弹窗在完成前被关闭',
-      'auth/popup-blocked': 'Popup was blocked by the browser. / 弹窗被浏览器拦截',
+      'auth/popup-closed-by-user': 'Popup closed before completing sign in.',
+      'auth/popup-blocked': 'Popup was blocked by the browser.',
       'auth/account-exists-with-different-credential':
-        'Account exists with different sign-in method. / 该邮箱已绑定其它登录方式',
+        'Account exists with different sign-in method.',
     }
-    errMsg.value = map[error.code] || error.message || 'Google sign-in failed. / Google 登录失败'
+    errMsg.value = map[error.code] || error.message || 'Google sign-in failed.'
     console.error(error)
   } finally {
     loading.value = false
